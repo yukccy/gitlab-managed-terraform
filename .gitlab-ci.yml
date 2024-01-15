@@ -1,0 +1,62 @@
+---
+variables:
+  STATE_NAME: "tf_state" # Name of the TF state
+  GITLAB_HOSTNAME: "<Your GitLab Hostname>" # For example, gitlab.com
+  PROJECT_ID: "<Your Project ID>" # For example, 33
+  ADDRESS: "https://${GITLAB_HOSTNAME}/api/v4/projects/${PROJECT_ID}/terraform/state/${STATE_NAME}" # Address of the TF State
+
+# Stages of the pipeline
+stages:
+  - validate
+  - plan
+  - apply
+  - destroy
+
+# Image for stages
+image:
+  name: hashicorp/terraform:light
+  entrypoint: [""]
+
+# Define the step of terraform init 
+before_script:
+  - terraform --version
+  - export GITLAB_ACCESS_TOKEN=$TOKEN # Your GitLab PAT and we will store in project variables
+  - export GITLAB_USERNAME=$USERNAME # Your GitLab username and we will store in project variables
+  - terraform init -reconfigure 
+    -backend-config="address=${ADDRESS}" 
+    -backend-config="lock_address=${ADDRESS}/lock" -backend-config="unlock_address=${ADDRESS}/lock" -backend-config="username=$GITLAB_USERNAME" -backend-config="password=$GITLAB_ACCESS_TOKEN" 
+    -backend-config="lock_method=POST" 
+    -backend-config="unlock_method=DELETE" 
+    -backend-config="retry_wait_min=5"    
+  
+# Terraform validate
+validate:
+  stage: validate
+  script:
+    - terraform validate
+
+# Terraform plan
+plan:
+  stage: plan
+  script:
+    - terraform plan 
+  dependencies:              
+    - validate
+
+# Terraform apply
+apply:
+  stage: apply
+  script:
+    - terraform apply  -auto-approve
+  dependencies:              
+    - plan
+
+# Terraform destroy
+destroy:
+  stage: destroy
+  script:
+    - terraform destroy  -auto-approve
+  dependencies:          
+    - plan
+    - apply
+  when: manual
